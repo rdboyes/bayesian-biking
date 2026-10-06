@@ -1,25 +1,29 @@
 // Lagged kinetic model of heart rate driven by power.
-// Latent HR relaxes toward a steady state a + b * P with time constant tau;
-// observation errors follow an AR(1) process.
+// Latent HR relaxes toward a steady state a + Bt * elapsed + b * P with time
+// constant tau; Bt captures slow upward drift in baseline HR over the ride.
+// Observation errors follow an AR(1) process.
 data {
   int<lower=2> N;
-  vector<lower=0>[N] dt;   // seconds since previous observation
-  vector<lower=0>[N] P;    // estimated power, in units of 100 W
-  vector[N] hr;            // heart rate, bpm
+  vector<lower=0>[N] dt;       // seconds since previous observation
+  vector<lower=0>[N] P;        // estimated power, in units of 100 W
+  vector[N] hr;                // heart rate, bpm
+  vector<lower=0>[N] elapsed;  // hours since ride start
 }
 parameters {
-  real a;                          // steady-state HR at 0 W
+  real a;                          // steady-state HR at 0 W, ride start
   real<lower=0> b;                 // bpm per 100 W
   real<lower=0> tau;               // response time constant, s
   real mu0;                        // latent HR at first observation
   real<lower=0> sigma;             // innovation sd
   real<lower=-1, upper=1> phi;     // AR(1) coefficient of residuals
+  real Bt;                         // drift in baseline HR, bpm per hour
 }
 transformed parameters {
   vector[N] mu;
   mu[1] = mu0;
   for (t in 2:N) {
-    mu[t] = mu[t - 1] + (1 - exp(-dt[t] / tau)) * (a + b * P[t] - mu[t - 1]);
+    real target_hr = a + Bt * elapsed[t] + b * P[t];
+    mu[t] = mu[t - 1] + (1 - exp(-dt[t] / tau)) * (target_hr - mu[t - 1]);
   }
 }
 model {
@@ -32,6 +36,7 @@ model {
   mu0 ~ normal(hr[1], 10);
   sigma ~ normal(0, 5);
   phi ~ normal(0.5, 0.3);
+  Bt ~ normal(0, 10);
 
   e[1] ~ normal(0, sd1);
   e[2:N] ~ normal(phi * e[1:(N - 1)], sigma);

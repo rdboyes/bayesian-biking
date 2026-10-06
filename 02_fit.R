@@ -11,24 +11,26 @@ stan_data <- list(
   N  = nrow(bins),
   dt = bins$dt,
   P  = bins$P / 100,
-  hr = bins$hr
+  hr = bins$hr,
+  elapsed = bins$t / 3600
 )
 
 mod <- cmdstan_model("stan/hr_power.stan")
 fit <- mod$sample(data = stan_data, chains = 4, parallel_chains = 4,
                   seed = 1, refresh = 500)
 
-pars <- c("a", "b", "tau", "mu0", "sigma", "phi")
+pars <- c("a", "b", "tau", "Bt", "mu0", "sigma", "phi")
 print(fit$summary(pars), width = 120)
 print(fit$diagnostic_summary())
 fit$save_object(file.path("output", paste0("fit_", ride_id, ".rds")))
 
 # ---- (a) posteriors of the key parameters ------------------------------------
-dr <- as_draws_df(fit$draws(c("a", "b", "tau")))
+dr <- as_draws_df(fit$draws(c("a", "b", "tau", "Bt")))
 post <- bind_rows(
   data.frame(param = "a: HR at 0 W (bpm)",       value = dr$a),
   data.frame(param = "b: bpm per 100 W",         value = dr$b),
-  data.frame(param = "tau: time constant (s)",   value = dr$tau)
+  data.frame(param = "tau: time constant (s)",   value = dr$tau),
+  data.frame(param = "Bt: drift (bpm/hour)",     value = dr$Bt)
 )
 p_post <- ggplot(post, aes(value)) +
   geom_density(fill = "grey70", colour = NA) +
@@ -36,7 +38,7 @@ p_post <- ggplot(post, aes(value)) +
   labs(x = NULL, y = NULL) +
   theme_minimal()
 ggsave(file.path("output", paste0("fit_", ride_id, "_posteriors.png")), p_post,
-       width = 9, height = 3, dpi = 120)
+       width = 9, height = 5, dpi = 120)
 
 # ---- (b) observed HR vs latent trajectory and posterior predictive -----------
 mu_mean <- fit$summary("mu", "mean")$mean
@@ -67,7 +69,7 @@ p_ss <- ggplot(ss_df, aes(P)) +
   geom_ribbon(aes(ymin = lo, ymax = hi), fill = "steelblue", alpha = 0.3) +
   geom_line(aes(y = mid), colour = "steelblue") +
   labs(x = "Estimated power (W, 10 s bins)", y = "Heart rate (bpm)",
-       subtitle = "Steady-state HR = a + b * P (median, 90% interval); points are raw bins") +
+       subtitle = "Steady-state HR at ride start = a + b * P (median, 90% interval); points are raw bins") +
   theme_minimal()
 ggsave(file.path("output", paste0("fit_", ride_id, "_steady_state.png")), p_ss,
        width = 6, height = 4, dpi = 120)
