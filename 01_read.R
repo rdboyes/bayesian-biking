@@ -6,7 +6,6 @@ library(ggplot2)
 
 # ---- config -----------------------------------------------------------------
 ride_id  <- "5835787118"
-rider_kg <- 100   # placeholder until dated weight records are joined in
 bike_kg  <- 10
 CdA      <- 0.40  # m^2, drag area
 Crr      <- 0.005 # rolling resistance coefficient
@@ -27,6 +26,19 @@ trkpt <- xml_find_all(read_xml(gpx), "//*[local-name()='trkpt']")
 hr <- as.numeric(xml_text(xml_find_first(trkpt, ".//*[local-name()='hr']")))
 stopifnot(length(hr) == nrow(pts))
 pts$hr <- hr
+
+# ---- rider mass on the ride date (from 00_weight.R) ---------------------------
+# Linear interpolation between daily weigh-ins, held flat beyond either end.
+weight <- read.csv(file.path("output", "weight_daily.csv"))
+weight$date <- as.Date(weight$date)
+ride_date <- as.Date(pts$time[1])
+rider_kg <- approx(weight$date, weight$kg, xout = ride_date, rule = 2)$y
+gap_days <- min(abs(as.numeric(weight$date - ride_date)))
+if (gap_days > 30) {
+  warning(sprintf("Nearest weigh-in is %d days from the ride", gap_days))
+}
+cat(sprintf("Ride date %s: rider mass %.1f kg (nearest weigh-in %d days away)\n",
+            ride_date, rider_kg, gap_days))
 
 # ---- distance, speed, grade, acceleration -----------------------------------
 n <- nrow(pts)
